@@ -20,7 +20,6 @@ function LeaSavedDraft() {
         {
             id: 'ICM-2025-00201',
             draftType: 'Walk-in Intake',
-            productCategory: 'Cosmetics',
             product: 'BioGlow Serum',
             complainant: 'L. Dela Cruz',
             lastEdited: '2026-05-18 14:32',
@@ -30,7 +29,6 @@ function LeaSavedDraft() {
         {
             id: 'VR-2025-00122',
             draftType: 'Verification Request',
-            productCategory: 'Dietary Supplement',
             product: 'HerbalSlim Capsules',
             complainant: 'M. Reyes',
             lastEdited: '2026-05-18 11:15',
@@ -40,7 +38,6 @@ function LeaSavedDraft() {
         {
             id: 'ICM-2025-00200',
             draftType: 'Walk-in Intake',
-            productCategory: 'Drug',
             product: 'PainAway Cream',
             complainant: 'R. Tan',
             lastEdited: '2026-05-17 16:48',
@@ -115,14 +112,13 @@ function LeaSavedDraft() {
             return false;
         }
 
-        // Search query filter (Product, Product Category, Case Number, Complainant)
+        // Search query filter (Product, Case Number, Complainant)
         if (searchQuery.trim() !== '') {
             const query = searchQuery.toLowerCase();
             const matchesProduct = draft.product.toLowerCase().includes(query);
-            const matchesCategory = draft.productCategory ? draft.productCategory.toLowerCase().includes(query) : false;
             const matchesId = draft.id.toLowerCase().includes(query);
             const matchesComplainant = draft.complainant.toLowerCase().includes(query);
-            if (!matchesProduct && !matchesCategory && !matchesId && !matchesComplainant) {
+            if (!matchesProduct && !matchesId && !matchesComplainant) {
                 return false;
             }
         }
@@ -143,7 +139,7 @@ function LeaSavedDraft() {
         <div className='LeaDashboardMain'>
             <Sidebar sidebarType="LEA" />
             <div className='LeaContentContainer'>
-                <TopBar topbarType="LEA" />
+                <TopBar />
                 <div className="LeaMainfeed">
                     {/* Page Header */}
                     <div className='LeaHeader'>
@@ -184,7 +180,7 @@ function LeaSavedDraft() {
                             <input
                                 type="text"
                                 className="DraftsSearchInput"
-                                placeholder="Search by Product Name or Product Category..."
+                                placeholder="Search by Product Name, Case Number, or Complainant"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -235,21 +231,21 @@ function LeaSavedDraft() {
                             <table className='ComplaintsTable'>
                                 <thead>
                                     <tr>
-                                        <th>DRAFT TYPE</th>
-                                        <th>PRODUCT CATEGORY</th>
-                                        <th>PRODUCT NAME</th>
-                                        <th>COMPLAINANT</th>
-                                        <th>LAST EDITED</th>
-                                        <th>SAVED BY</th>
-                                        <th>STATUS</th>
-                                        <th>ACTIONS</th>
+                                        <th>Draft Type</th>
+                                        <th>Case No.</th>
+                                        <th>Product</th>
+                                        <th>Complainant</th>
+                                        <th>Last Edited</th>
+                                        <th>Saved By</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredDrafts.map((draft) => (
                                         <tr key={draft.id}>
                                             <td style={{ fontWeight: '600', color: '#13213C' }}>{draft.draftType}</td>
-                                            <td>{draft.productCategory}</td>
+                                            <td className='ClassId'>{draft.id}</td>
                                             <td className='ProductName'>{draft.product}</td>
                                             <td>{draft.complainant}</td>
                                             <td>{draft.lastEdited}</td>

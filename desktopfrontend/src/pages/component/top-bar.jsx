@@ -64,64 +64,26 @@ const allNotifications = [
     },
 ]
 
-/**
- * Helper function to retrieve and normalize the authenticated agency role from localStorage.
- * Standardizes agency/role values into 'fda', 'lea', or 'superadmin'.
- * Default fallback is 'fda' if no agency is explicitly set in localStorage.
- * 🔌 BACKEND: replace localStorage with JWT token claims when backend is connected
- */
-const getAuthenticatedRole = () => {
-    const raw = (
-        localStorage.getItem('agency') || 
-        localStorage.getItem('role') || 
-        'fda'
-    ).toString().trim().toLowerCase();
-
-    if (raw.includes('super')) return 'superadmin';
-    if (raw === 'lea' || raw === 'cidg' || raw.includes('lea') || raw.includes('cidg')) return 'lea';
-    return 'fda';
-};
-
-function TopBar({ topbarType, role, agency }) {
+function TopBar() {
     const navigate = useNavigate();
     
-    // Determine type to render (single source of truth: topbarType -> role -> agency -> fallback to localStorage)
-    let type = topbarType;
-    if (!type) {
-        const rawRole = (role || '').toString();
-        const rawAgency = (agency || '').toString();
-        if (rawRole) type = rawRole;
-        else if (rawAgency) type = rawAgency;
-    }
+    // Retrieve agency role
+    const agency = localStorage.getItem('agency') || 'lea'
+    const normalizedAgency = agency.toLowerCase();
+    console.log("TopBar - retrieved agency value from localStorage:", agency, "normalized:", normalizedAgency);
 
-    const getNormalizedAgency = () => {
-        if (type) {
-            const raw = type.toString().trim().toLowerCase();
-            if (raw.includes('super')) return 'superadmin';
-            if (raw === 'lea' || raw === 'cidg' || raw.includes('lea') || raw.includes('cidg')) return 'lea';
-            if (raw === 'fda' || raw.includes('fda')) return 'fda';
-        }
-        return getAuthenticatedRole();
-    };
-
-    const normalizedAgency = getNormalizedAgency();
-
-    // dropdown open/close states
+    // Dropdown states
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-    // refs for detecting clicks outside dropdowns
+    // Refs for clicking outside
     const notifRef = useRef(null);
     const profileRef = useRef(null);
 
-    // notifications filtered by agency
-    const [notifications, setNotifications] = useState([]);
+    const [notifications, setNotifications] = useState(
+        allNotifications.filter(n => n.agency === normalizedAgency)
+    )
 
-    useEffect(() => {
-        setNotifications(allNotifications.filter(n => n.agency === normalizedAgency));
-    }, [normalizedAgency]);
-
-    // close dropdowns when clicking outside
     useEffect(() => {
         function handleClickOutside(event) {
             if (notifRef.current && !notifRef.current.contains(event.target)) {
@@ -132,7 +94,9 @@ function TopBar({ topbarType, role, agency }) {
             }
         }
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
     }, []);
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -145,39 +109,29 @@ function TopBar({ topbarType, role, agency }) {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     };
 
-    // Profile Settings — only for FDA and LEA, NOT superadmin
     const handleProfileClick = () => {
         setIsProfileOpen(false);
         navigate('/profile-setting');
     };
 
-    // Logout — redirects to correct login page based on agency
     const handleLogoutClick = () => {
         setIsProfileOpen(false);
-
-        /*
-          🔌 BACKEND: clear session token and call logout endpoint:
+        
+        /* 
+          BACKEND INTEGRATION:
+          Clear user session token, reset auth cookies, and call logout endpoint:
+          
           try {
             await fetch('/api/auth/logout', { method: 'POST' });
           } catch(err) {
-            console.error("Logout failed:", err);
+            console.error("Logout API call failed:", err);
           }
+          
           localStorage.removeItem('token');
           sessionStorage.clear();
         */
-
-        // clear agency from localStorage
-        localStorage.removeItem('agency');
-        localStorage.removeItem('role');
-
-        // redirect to correct login page based on agency
-        // superadmin goes to superadmin login
-        // fda and lea go to interagency login
-        if (normalizedAgency === 'superadmin') {
-            navigate('/superadmin-login');
-        } else {
-            navigate('/login');
-        }
+        console.log("Ending personnel session. Redirecting to login...");
+        navigate('/login');
     };
 
     return (
@@ -203,6 +157,7 @@ function TopBar({ topbarType, role, agency }) {
                     gap: 16px;
                 }
 
+                /* Notification Trigger */
                 .TopbarNotifWrapper {
                     position: relative;
                     display: flex;
@@ -235,6 +190,7 @@ function TopBar({ topbarType, role, agency }) {
                     height: 20px;
                 }
 
+                /* Profile Trigger */
                 .TopbarProfileWrapper {
                     position: relative;
                 }
@@ -270,19 +226,16 @@ function TopBar({ topbarType, role, agency }) {
                     border: 1px solid rgba(253, 253, 253, 0.2);
                 }
 
-                /* FDA — dark green */
                 .TopbarAvatarCircle.agency-fda {
-                    background: #1B4332;
+                    background: #1B4332; /* FDA Green */
                 }
 
-                /* LEA-CIDG — navy blue */
                 .TopbarAvatarCircle.agency-lea {
-                    background: #13213C;
+                    background: #13213C; /* LEA Navy/Blue */
                 }
 
-                /* Superadmin — teal */
                 .TopbarAvatarCircle.agency-superadmin {
-                    background: linear-gradient(135deg, #0D9488 0%, #0f766e 100%);
+                    background: linear-gradient(135deg, #0D9488 0%, #0f766e 100%); /* SuperAdmin Teal */
                 }
 
                 .TopbarAvatarCircle svg {
@@ -306,6 +259,7 @@ function TopBar({ topbarType, role, agency }) {
                     color: #13213C;
                 }
 
+                /* Dropdown Banners */
                 .TopbarDropdown {
                     position: absolute;
                     top: calc(100% + 8px);
@@ -466,6 +420,7 @@ function TopBar({ topbarType, role, agency }) {
                     border: 1.5px solid #FDFDFD;
                 }
 
+                /* Dropdown Items styling */
                 .TopbarDropdownItem {
                     display: flex;
                     align-items: center;
@@ -506,85 +461,48 @@ function TopBar({ topbarType, role, agency }) {
                 .TopbarDropdownItemLogout:hover svg {
                     color: #b91c1c;
                 }
-
-                /* divider between profile settings and logout */
-                .TopbarDropdownDivider {
-                    height: 1px;
-                    background: #EDEDED;
-                    margin: 4px 0;
-                }
             `}</style>
 
             <div className='TopbarContainer'>
                 <div className='TopbarActions'>
                     
-                    {/* Profile Dropdown */}
+                    {/* Profile Dropdown wrapper */}
                     <div className='TopbarProfileWrapper' ref={profileRef}>
-                        <div
-                            className='TopbarProfileBox'
-                            onClick={() => setIsProfileOpen(!isProfileOpen)}
-                        >
-                            {/* Avatar circle color changes per agency */}
+                        <div className='TopbarProfileBox' onClick={() => setIsProfileOpen(!isProfileOpen)}>
                             <div className={`TopbarAvatarCircle ${
-                                normalizedAgency === 'fda'
-                                    ? 'agency-fda'
-                                    : normalizedAgency === 'superadmin'
-                                        ? 'agency-superadmin'
+                                normalizedAgency === 'fda' 
+                                    ? 'agency-fda' 
+                                    : normalizedAgency === 'superadmin' 
+                                        ? 'agency-superadmin' 
                                         : 'agency-lea'
                             }`}>
                                 <User />
                             </div>
-
-                            {/* Username label */}
-                            {/* 🔌 BACKEND: replace 'Admin' with actual logged-in user's name */}
-                            <span className='TopbarUsername'>
-                                {normalizedAgency === 'superadmin' ? 'Super Admin' : 'Admin'}
-                            </span>
-
-                            <ChevronDown
-                                size={14}
-                                className={`TopbarChevron ${isProfileOpen ? 'open' : ''}`}
-                            />
+                            <span className='TopbarUsername'>Admin</span>
+                            <ChevronDown size={14} className={`TopbarChevron ${isProfileOpen ? 'open' : ''}`} />
                         </div>
 
                         {isProfileOpen && (
                             <div className='TopbarProfileDropdown'>
-
-                                {/* Profile Settings — visible for FDA, LEA, and SUPERADMIN */}
-                                <button
-                                    className='TopbarDropdownItem'
-                                    onClick={handleProfileClick}
-                                >
-                                    <Settings size={16} />
-                                    <span>Profile Settings</span>
-                                </button>
-
-                                <div className='TopbarDropdownDivider' />
-
-                                {/* Logout / End Session */}
-                                {/* redirects to superadmin-login if superadmin, else to /login */}
-                                <button
-                                    className='TopbarDropdownItem TopbarDropdownItemLogout'
-                                    onClick={handleLogoutClick}
-                                >
+                                {normalizedAgency !== 'superadmin' && (
+                                    <button className='TopbarDropdownItem' onClick={handleProfileClick}>
+                                        <Settings size={16} />
+                                        <span>Profile Settings</span>
+                                    </button>
+                                )}
+                                <button className='TopbarDropdownItem TopbarDropdownItemLogout' onClick={handleLogoutClick}>
                                     <LogOut size={16} />
                                     <span>End Session</span>
                                 </button>
-
                             </div>
                         )}
                     </div>
 
-                    {/* Notification Bell */}
+                    {/* Notification wrapper */}
                     <div className='TopbarNotifWrapper' ref={notifRef}>
-                        <div
-                            className='TopbarBox'
-                            onClick={() => setIsNotifOpen(!isNotifOpen)}
-                        >
-                            <Bell />
-                            {unreadCount > 0 && (
-                                <span className='BellBadge'>{unreadCount}</span>
-                            )}
+                        <div className='TopbarBox' onClick={() => setIsNotifOpen(!isNotifOpen)}>
+                            <Bell/>
+                            {unreadCount > 0 && <span className='BellBadge'>{unreadCount}</span>}
                         </div>
 
                         {isNotifOpen && (
@@ -592,10 +510,7 @@ function TopBar({ topbarType, role, agency }) {
                                 <div className='TopNotifTitle'>
                                     <h5>Notifications</h5>
                                     {unreadCount > 0 && (
-                                        <button
-                                            className='MarkAllReadBtn'
-                                            onClick={handleMarkAllAsRead}
-                                        >
+                                        <button className='MarkAllReadBtn' onClick={handleMarkAllAsRead}>
                                             Mark all as read
                                         </button>
                                     )}
@@ -605,8 +520,8 @@ function TopBar({ topbarType, role, agency }) {
                                         <div className='EmptyNotif'>No notifications</div>
                                     ) : (
                                         notifications.map((notif) => (
-                                            <div
-                                                key={notif.id}
+                                            <div 
+                                                key={notif.id} 
                                                 className={`NotifItem ${notif.isRead ? '' : 'unread'}`}
                                                 onClick={() => handleNotificationClick(notif.id)}
                                             >

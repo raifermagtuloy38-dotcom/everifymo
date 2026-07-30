@@ -6,7 +6,10 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 //LOGIN PAGE EXCLUSIVELY FOR SUPERADMIN
 
 
-
+//TEST ACCOUNT ONLY AND TO BE REPLACED ONCE MY BACKEND NA
+const TestAccount = [
+    { email: 'superadmin@gmail.com', password: '@Superadmin12345' }
+];
 
 function SuperAdminLogin() {
     const navigate = useNavigate();
@@ -24,7 +27,7 @@ function SuperAdminLogin() {
     //stores each digit ng otp
     const [otp, setOtp] = useState(new Array(6).fill(''));
     //timer for resending otp
-    const [timer, setTimer] = useState(300);
+    const [timer, setTimer] = useState(180);
 
     //for input box focus to each digit
     const otpRefs = useRef([]);
@@ -86,26 +89,11 @@ function SuperAdminLogin() {
     }
 
     // Resend OTP trigger
-    async function handleResendOtp() {
-    setAdminLoginError('');
-    try {
-        const response = await fetch('http://127.0.0.1:8000/auth/superadmin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Failed to resend code.');
-        }
-
-        setTimer(300);
+    function handleResendOtp() {
+        setTimer(180);
         setOtp(new Array(6).fill(''));
+        setAdminLoginError('');
         setTimeout(() => { otpRefs.current[0]?.focus(); }, 0);
-    } catch (err) {
-        setAdminLoginError(err.message);
-    }
     }
 
     // Switch back to credentials form
@@ -122,7 +110,7 @@ function SuperAdminLogin() {
         return null;
     }
 
-    async function handleLogin() {
+    function handleLogin() {
     if (!isOtpSent) {
 
         // Check if fields are empty
@@ -145,23 +133,18 @@ function SuperAdminLogin() {
             return;
         }
 
-        try {
-            const response = await fetch('http://127.0.0.1:8000/auth/superadmin/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
+        // Check credentials (temporary frontend logic)
+        // BACKEND: Replace this block with API call
+        const match = TestAccount.find(
+            (acc) => acc.email === email && acc.password === password
+        );
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Invalid email or password.');
-            }
-
+        if (match) {
             setIsOtpSent(true);
-            setTimer(300);
+            setTimer(180);
             setAdminLoginError('');
-        } catch (err) {
-            setAdminLoginError(err.message);
+        } else {
+            setAdminLoginError('Invalid email or password.');
         }
 
     } else {
@@ -173,25 +156,12 @@ function SuperAdminLogin() {
             return;
         }
 
-        try {
-            const response = await fetch('http://127.0.0.1:8000/auth/superadmin/verify-otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, otp: otpCode }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Invalid verification code. Please try again.');
-            }
-
-            const data = await response.json();
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('refresh_token', data.refresh_token);
+        // BACKEND: Replace this block with OTP verification API
+        if (otpCode === '123456') {
             localStorage.setItem('agency', 'superadmin');
             navigate('/superadminfolder/superadmin-user-management');
-        } catch (err) {
-            setAdminLoginError(err.message);
+        } else {
+            setAdminLoginError('Invalid verification code. Please try again.');
         }
     }
 }
@@ -200,149 +170,126 @@ function SuperAdminLogin() {
     return (
         <div className="AdminLoginContainer">
             <div className="AdminLoginWrapper">
-                 {/* LEFT PANEL */}
-                <div className="AdminLoginLeftPanel">
-                    <div className="AdminLoginTextWrapper">
-                        <h1 className="AdminLoginWelcomeText">Welcome to</h1>
-                        <p className="AdminLoginSubtitleText">ICMDA Super Admin log in page.</p>
-                    </div>
-                    <div className="AdminLoginLogoContainer">
-                        <img src="src/images/fda_desktop.png" alt="FDA Philippines" />
-                        <img src="src/images/cidg_desktop.png" alt="CIDG PNP" />
-                    </div>
-                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
 
-                {/* RIGHT PANEL */}
-                <div className={`AdminLoginRightPanel ${isOtpSent ? 'OtpPanelActive' : ''}`}>
-                    <form 
-                        className={isOtpSent ? 'OtpFormActive' : ''}
-                        onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+                    {!isOtpSent ? (
+                        <>
+                            <div className="AdminLoginHeader">
+                                <h3>Welcome Back</h3>
+                                <p>Please login to your account.</p>
+                            </div>
 
-                        {!isOtpSent ? (
-                            <>
-                                <div className="AdminLoginHeader">
-                                    <p>Please login to your account.</p>
+                            <div>
+                                <label htmlFor="email">Email <span>*</span></label>
+                                <div className="LoginInputWrapper">
+                                    <Mail className="LoginInputIcon" size={16} />
+                                    <input
+                                        id="email"
+                                        type="email"
+                                        placeholder="youremail@gmail.com"
+                                        value={email}
+                                        onChange={(e) => { setEmail(e.target.value); setAdminLoginError(''); }}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '15px' }}>
+                                <label htmlFor="password">Password <span>*</span></label>
+                                <div className="PasswordInputWrapper">
+                                    <Lock className="LoginInputIcon" size={16} />
+                                    <input
+                                        id="password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        placeholder="Enter your password"
+                                        value={password}
+                                        onChange={(e) => { setPassword(e.target.value); setAdminLoginError(''); }}
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        className="TogglePasswordBtn"
+                                        onClick={() => setShowPassword(v => !v)}
+                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <a
+                                onClick={() => navigate('/forgot-password?from=superadmin')}
+                                className="ForgotPasswordLink"
+                            >
+                                Forgot Password?
+                            </a>
+
+                            <button type="submit">Login</button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="AdminLoginHeader">
+                                <h3>Security Verification</h3>
+                                <p>We've sent a 6-digit verification code to your email.</p>
+                            </div>
+
+                            <div className="OtpContainer">
+                                <div className="OtpInstructions">
+                                    Enter the code sent to <span>{email}</span>.
+                                    <span className="OtpTestHint">
+                                        (For testing, use verification code: <strong>123456</strong>)
+                                    </span>
                                 </div>
 
-                                <div>
-                                    <label htmlFor="email">Email <span>*</span></label>
-                                    <div className="LoginInputWrapper">
-                                        <Mail className="LoginInputIcon" size={16} />
+                                <div className="OtpInputGrid">
+                                    {otp.map((digit, idx) => (
                                         <input
-                                            id="email"
-                                            type="email" 
-                                            placeholder="youremail@gmail.com"
-                                            value={email}
-                                            onChange={(e) => { setEmail(e.target.value); setAdminLoginError(''); }}
+                                            key={idx}
+                                            id={`otp-digit-${idx}`}
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            className="OtpDigitInput"
+                                            value={digit}
+                                            ref={(el) => (otpRefs.current[idx] = el)}
+                                            onChange={(e) => handleOtpChange(e.target, idx)}
+                                            onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                                            onPaste={handleOtpPaste}
                                             required
                                         />
-                                    </div>
+                                    ))}
                                 </div>
 
-                                <div style={{ marginTop: '15px' }}>
-                                    <div className="PasswordLabelRow">
-                                        <label htmlFor="password">Password <span>*</span></label>
-                                        
-                                         <a   onClick={() => navigate('/forgot-password?from=superadmin')}
-                                            className="ForgotPasswordLink">
-                                            Forgot?
-                                        </a>
-                                    </div>
-
-                                    <div className="PasswordInputWrapper">
-                                        <Lock className="LoginInputIcon" size={16} />
-                                        <input
-                                            id="password"
-                                            type={showPassword ? 'text' : 'password'}
-                                            placeholder="Enter your password"
-                                            value={password}
-                                            onChange={(e) => { setPassword(e.target.value); setAdminLoginError(''); }}
-                                            required
-                                        />
-                                        
-                                        <button
-                                            type="button"
-                                            className="TogglePasswordBtn"
-                                            onClick={() => setShowPassword(v => !v)}
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
-                                    </div>
-
-                                    {!isOtpSent && adminLoginError && (
-                                        <p className="AdminLoginErrorMsg" style={{ marginTop: '8px' }}>{adminLoginError}</p>
+                                <div className="OtpTimerContainer">
+                                    {timer > 0 ? (
+                                        <p>Resend code in <strong>{formatTimer(timer)}</strong></p>
+                                    ) : (
+                                        <p>
+                                            Didn't receive the code?{' '}
+                                            <button type="button" className="ResendButton" onClick={handleResendOtp}>
+                                                Resend OTP
+                                            </button>
+                                        </p>
                                     )}
                                 </div>
 
-                                <button type="submit">Login</button>
-                            </>
-                        ) : (
-                            <>
-                                <div className="AdminLoginHeader_otp">
-                                    <h3>Security Verification</h3>
-                                    <p>We've sent a 6-digit verification code to your email.</p>
-                                </div>
+                                <button type="button" className="BackToLoginBtn" onClick={handleBackToLogin}>
+                                    ← Back to login
+                                </button>
 
-                                <div className="OtpContainer">
-                                    <div className="OtpInstructions">
-                                        Enter the code sent to <span>{email}</span>.
-                                        <span className="OtpTestHint">
-                                            (For testing, use verification code: <strong>123456</strong>)
-                                        </span>
-                                    </div>
+                                <button type="submit" style={{ marginTop: '20px' }}>
+                                    Verify &amp; Login
+                                </button>
+                            </div>
+                        </>
+                    )}
 
-                                    <div className="OtpInputGrid">
-                                        {otp.map((digit, idx) => (
-                                            <input
-                                                key={idx}
-                                                id={`otp-digit-${idx}`}
-                                                type="text"
-                                                inputMode="numeric"
-                                                pattern="[0-9]*"
-                                                className="OtpDigitInput"
-                                                value={digit}
-                                                ref={(el) => (otpRefs.current[idx] = el)}
-                                                onChange={(e) => handleOtpChange(e.target, idx)}
-                                                onKeyDown={(e) => handleOtpKeyDown(e, idx)}
-                                                onPaste={handleOtpPaste}
-                                                required
-                                            />
-                                        ))}
-                                    </div>
-
-                                    <div className="OtpTimerContainer">
-                                        {timer > 0 ? (
-                                            <p>Resend code in <strong>{formatTimer(timer)}</strong></p>
-                                        ) : (
-                                            <p>
-                                                Didn't receive the code?{' '}
-                                                <button type="button" className="ResendButton" onClick={handleResendOtp}>
-                                                    Resend OTP
-                                                </button>
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    <button type="button" className="BackToLoginBtn" onClick={handleBackToLogin}>
-                                        ← Back to login
-                                    </button>
-
-                                    <button type="submit" style={{ marginTop: '20px' }}>
-                                        Verify &amp; Login
-                                    </button>
-                                </div>
-
-                                {adminLoginError && (
-                                    <div className="AdminLoginErrorMsgContainer" style={{ marginTop: '15px' }}>
-                                        <p className="AdminLoginErrorMsg">{adminLoginError}</p>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </form>
-                </div>
-                
+                    {adminLoginError && (
+                        <div className="AdminLoginErrorMsgContainer" style={{ marginTop: '15px' }}>
+                            <p className="AdminLoginErrorMsg">{adminLoginError}</p>
+                        </div>
+                    )}
+                </form>
             </div>
         </div>
     );
