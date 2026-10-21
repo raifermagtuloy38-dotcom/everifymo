@@ -1,5 +1,81 @@
-﻿// https://everify.store
+﻿// extension/scripts/background.js
+import { TERMS_VERSION, WELCOME_PAGE } from '../utils/agreement.js';
+
 console.log("Background service worker started");
+
+// ----- Terms agreement -----
+// If the Terms date changed since the person agreed, switch the agreement off so they are asked again
+async function syncAgreement() {
+  const { termsAgreed, agreedTermsVersion } = await chrome.storage.local.get(['termsAgreed', 'agreedTermsVersion']);
+  if (termsAgreed === true && agreedTermsVersion !== TERMS_VERSION) {
+    await chrome.storage.local.set({ termsAgreed: false });
+    return false;
+  }
+  return termsAgreed === true;
+}
+
+function openWelcomePage() {
+  chrome.tabs.create({ url: chrome.runtime.getURL(WELCOME_PAGE) });
+}
+
+// On a new install (or when the extension is reloaded/updated), open the welcome page if they have not agreed
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason !== 'install' && details.reason !== 'update') return;
+  const agreed = await syncAgreement();
+  if (!agreed) openWelcomePage();
+});
+
+syncAgreement(); // also check every time the background worker wakes up
+
+function productKey(url) {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
+}
+
+const FDA_CONTACT_LINE = 'FDA hotline (02) 8857-1900 · info@fda.gov.ph';
+
+function showNotification(id, title, message, contextMessage) {
+  chrome.notifications.clear(id, () => {
+    chrome.notifications.create(id, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('assets/images/icon128.png'),
+      title,
+      message,
+      ...(contextMessage ? { contextMessage } : {})
+    }, () => {
+      if (chrome.runtime.lastError) console.error('Notification error:', chrome.runtime.lastError.message);
+    });
+  });
+}
+
+function statusLabel(status) {
+  if (status === 'registered') return 'Registered';
+  if (status === 'unregistered') return 'Unregistered';
+  if (status === 'suspicious') return 'Suspicious';
+  return status;
+}
+
+async function notifyOnStatusChange(message, status) {
+  const key = productKey(message.url);
+  const { seenProducts = {} } = await chrome.storage.local.get('seenProducts');
+  const previous = seenProducts[key];
+
+  if (status !== 'registered') {
+    showNotification(`status-${key}`, 'Product not confirmed as registered',
+      `ProduCheck's result: ${statusLabel(status)}. Please confirm on the FDA Verification Portal (verification.fda.gov.ph).`,
+      FDA_CONTACT_LINE);
+  } else if (previous && previous !== 'registered') {
+    showNotification(`status-${key}`, 'Good news',
+      'This product now matches the FDA product list used by ProduCheck. You can double-check on verification.fda.gov.ph.');
+  }
+
+  seenProducts[key] = status;
+  await chrome.storage.local.set({ seenProducts });
+}
 
 async function authorizedFetch(url, options = {}) {
   let { access_token, refresh_token } = await chrome.storage.local.get(['access_token', 'refresh_token']);
@@ -16,7 +92,7 @@ async function authorizedFetch(url, options = {}) {
 
   if (res.status === 401 && refresh_token) {
     const refreshRes = await fetch(
-      `http://localhost:8001/auth/refresh?refresh_token=${encodeURIComponent(refresh_token)}`,
+      `https://everify.store/auth/refresh?refresh_token=${encodeURIComponent(refresh_token)}`,
       { method: 'POST' }
     );
 
@@ -35,12 +111,43 @@ async function authorizedFetch(url, options = {}) {
   return res;
 }
 
+// These actions do real work (read the page, call the server), so they only run after the person agrees
+const NEEDS_AGREEMENT = ['pageVisited', 'captureScreenshot', 'verifyScreenshot', 'extractedTitle', 'recordDisplayedDetection', 'submitComplaint'];
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (NEEDS_AGREEMENT.includes(message.action)) {
+    chrome.storage.local.get('termsAgreed', ({ termsAgreed }) => {
+      if (termsAgreed === true) {
+        handleMessage(message, sender, sendResponse);
+      } else {
+        sendResponse({ success: false, status: 'error', data: null, error: 'Please agree to the Terms first.' });
+      }
+    });
+    return true; // the answer comes a moment later
+  }
+  return handleMessage(message, sender, sendResponse);
+});
+
+function handleMessage(message, sender, sendResponse) {
   if (message.action === "checkAuth") {
     chrome.storage.local.get(['access_token'], (data) => {
       sendResponse({ loggedIn: !!data.access_token });
     });
     return true;
+  }
+
+  if (message.action === 'pageVisited') {
+    (async () => {
+      const key = productKey(message.url);
+      const { seenProducts = {} } = await chrome.storage.local.get('seenProducts');
+      const status = seenProducts[key];
+      if (status && status !== 'registered') {
+        showNotification(`status-${key}`, 'You checked this product before',
+          `Your earlier result was: ${statusLabel(status)}. Results can change, so click Check Product again for the latest result.`,
+          FDA_CONTACT_LINE);
+      }
+    })();
+    return;
   }
 
   if (message.action === "captureScreenshot") {
@@ -50,24 +157,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
 
-    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, async (dataUrl) => {
+    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
       if (chrome.runtime.lastError) {
         sendResponse({ success: false, error: chrome.runtime.lastError.message });
         return;
       }
+      sendResponse({ success: true, dataUrl });
+    });
+    return true;
+  }
+
+  if (message.action === "verifyScreenshot") {
+    (async () => {
       try {
-        const res = await fetch('http://localhost:8001/verify-screenshot', {
+        const res = await fetch('https://everify.store/verify-screenshot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: dataUrl, url: message.url, platform: message.platform })
+          body: JSON.stringify({ 
+            image: message.image, 
+            url: message.url, 
+            platform: message.platform,
+            dpr: message.dpr, 
+            rect: message.rect 
+          })
         });
+        
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
         const data = await res.json();
-        sendResponse({ success: true, dataUrl, title: data.title, store: data.store });
+        sendResponse({ 
+          success: true, 
+          title: data.title, 
+          store: data.store,
+          brand: data.brand,
+          searchText: data.search_text,
+          error: data.error 
+        });
       } catch (e) {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({ 
+          success: false, 
+          error: e.message 
+        });
       }
-    });
-    return true;  
+   })();
+    return true;
   }
 
   if (message.action === "openLogin") {
@@ -75,12 +208,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  console.log('Background received message:', message);
+  // console.log('Background received message:', message); - this debug line printed the whole message, which includes a complaint's attached screenshot, into the extension's developer console on the user's own computer. It was never sent anywhere, but it is better not to log it.
   if (message.action === 'extractedTitle') {
-    //
     (async () => {
       try {
-        const response = await fetch('http://localhost:8001/verify', {
+        const response = await fetch('https://everify.store/verify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -90,8 +222,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const data = await response.json().catch(() => null);
         console.log('Backend response:', data);
+
+        if (!response.ok || !data?.verdict) {
+          console.error('verify failed:', response.status, data);
+          sendResponse({ status: 'error', data: null });
+          return;
+        }
         
         const status = data?.verdict === 'no_match' ? 'suspicious' : data?.verdict || 'unregistered';
+        notifyOnStatusChange(message, status).catch(console.error);
 
         // Store the extracted product info in chrome.storage
         chrome.storage.local.set({
@@ -109,7 +248,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         sendResponse({ status: 'success', data: data });
 
-        const res = await authorizedFetch('http://localhost:8001/submitVerification', {
+        const res = await authorizedFetch('https://everify.store/submitVerification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -127,19 +266,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } catch (error) {
         //
         console.error('Error sending title to backend:', error);
-        const status = 'unregistered';
-        chrome.storage.local.set({
-          productTitle: message.title,
-          productPlatform: message.platform,
-          productUrl: message.url,
-          productStatus: status
-        }, () => {
-          console.log('Product info stored with error fallback:', message.title);
-        });
+        // const status = 'unregistered';
+        // chrome.storage.local.set({
+        //   productTitle: message.title,
+        //   productPlatform: message.platform,
+        //   productUrl: message.url,
+        //   productStatus: status
+        // }, () => {
+        //   console.log('Product info stored with error fallback:', message.title);
+        // });
 
-        if (sender.tab && sender.tab.id) {
-          updateBadge(status, sender.tab.id);
-        }
+        // if (sender.tab && sender.tab.id) {
+        //   updateBadge(status, sender.tab.id);
+        // }
         
         sendResponse({ status: 'error', data: null });
       }
@@ -154,7 +293,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
-        const response = await fetch('http://localhost:8001/marketplace-detections', { // http://localhost:8001
+        const response = await fetch('https://everify.store/marketplace-detections', { // http://localhost:8001
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -176,7 +315,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'submitComplaint') {
     (async () => {
       try {
-        const res = await authorizedFetch('http://localhost:8001/submitComplaint', {
+        const res = await authorizedFetch('https://everify.store/submitComplaint', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -209,13 +348,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-});
+}
 
 function updateBadge(status, tabId) {
   const badgeConfig = {
     registered:   { text: '✓', color: '#16A34A' }, // green
     unregistered: { text: '!', color: '#DC2626' }, // red
-    unverified:   { text: '?', color: '#D97706' }, // amber
+    suspicious:   { text: '?', color: '#D97706' }, // amber
     idle:         { text: '',  color: '#000000' }  // clears badge
   };
 
